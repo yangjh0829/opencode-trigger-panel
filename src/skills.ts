@@ -47,25 +47,69 @@ export async function discoverSkillsViaApi(api: TuiPluginApi): Promise<SkillInfo
 
 // 鈹€鈹€ Approach 2: Comprehensive filesystem scan (fallback) 鈹€鈹€
 
-function findSuperpowersSkillsDir(): string | null {
-  const packagesDir = path.join(os.homedir(), ".cache", "opencode", "packages")
-  let entries: fs.Dirent[]
-  try { entries = fs.readdirSync(packagesDir, { withFileTypes: true }) }
-  catch { return null }
+/**
+ * Recursively search a package directory for skills folders.
+ * Handles git-based packages where node_modules is nested under
+ * URL-expanded paths (e.g. github.com/obra/superpowers.git/).
+ *
+ * Finds any `<pkg>/skills/` that sits inside a `node_modules/` dir,
+ * up to 5 levels deep. Skips nested node_modules to avoid dependency trees.
+ */
+function findSkillsDirsInDir(rootDir: string, maxDepth = 5): { dir: string; label: string }[] {
+  const results: { dir: string; label: string }[] = []
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    if (!entry.name.startsWith("superpowers")) continue
-    const skillsDir = path.join(
-      packagesDir, entry.name, "node_modules", "superpowers", "skills",
-    )
-    if (fs.existsSync(skillsDir)) return skillsDir
+  function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return
+    let entries: fs.Dirent[]
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }) }
+    catch { return }
+
+    // If this directory IS a node_modules, look for <pkg>/skills/ inside it
+    if (path.basename(dir) === "node_modules") {
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        if (entry.name.startsWith(".")) continue
+
+        // Direct: node_modules/<pkg>/skills/
+        const skillsDir = path.join(dir, entry.name, "skills")
+        if (fs.existsSync(skillsDir) && fs.existsSync(path.join(dir, entry.name, "package.json"))) {
+          results.push({ dir: skillsDir, label: entry.name })
+        }
+
+        // Scoped: node_modules/@scope/<pkg>/skills/
+        if (entry.name.startsWith("@")) {
+          const scopeDir = path.join(dir, entry.name)
+          let scopeEntries: fs.Dirent[]
+          try { scopeEntries = fs.readdirSync(scopeDir, { withFileTypes: true }) }
+          catch { continue }
+          for (const se of scopeEntries) {
+            if (!se.isDirectory()) continue
+            const scopedSkills = path.join(scopeDir, se.name, "skills")
+            if (fs.existsSync(scopedSkills)) {
+              results.push({ dir: scopedSkills, label: `${entry.name}/${se.name}` })
+            }
+          }
+        }
+      }
+      return // Don't recurse INTO node_modules packages (avoid dependency tree)
+    }
+
+    // Recurse into subdirectories to find nested node_modules
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      if (entry.name.startsWith(".")) continue
+      walk(path.join(dir, entry.name), depth + 1)
+    }
   }
-  return null
+
+  walk(rootDir, 0)
+  return results
 }
 
 function findAllPluginSkills(): { dir: string; label: string }[] {
   const packagesDir = path.join(os.homedir(), ".cache", "opencode", "packages")
+  if (!fs.existsSync(packagesDir)) return []
+
   const results: { dir: string; label: string }[] = []
   let entries: fs.Dirent[]
   try { entries = fs.readdirSync(packagesDir, { withFileTypes: true }) }
@@ -73,32 +117,12 @@ function findAllPluginSkills(): { dir: string; label: string }[] {
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    // Scan each plugin's node_modules for skills directories
-    const nodeModules = path.join(packagesDir, entry.name, "node_modules")
-    let nmEntries: fs.Dirent[]
-    try { nmEntries = fs.readdirSync(nodeModules, { withFileTypes: true }) }
-    catch { continue }
-
-    for (const nmEntry of nmEntries) {
-      if (!nmEntry.isDirectory()) continue
-      // Standard location: node_modules/<pkg>/skills/
-      const skillsDir = path.join(nodeModules, nmEntry.name, "skills")
-      if (fs.existsSync(skillsDir) && fs.existsSync(path.join(skillsDir, "..", "package.json"))) {
-        results.push({ dir: skillsDir, label: nmEntry.name })
-      }
-      // Scoped packages: node_modules/@scope/<pkg>/skills/
-      if (nmEntry.name.startsWith("@")) {
-        const scopeDir = path.join(nodeModules, nmEntry.name)
-        let scopeEntries: fs.Dirent[]
-        try { scopeEntries = fs.readdirSync(scopeDir, { withFileTypes: true }) }
-        catch { continue }
-        for (const se of scopeEntries) {
-          if (!se.isDirectory()) continue
-          const scopedSkills = path.join(scopeDir, se.name, "skills")
-          if (fs.existsSync(scopedSkills)) {
-            results.push({ dir: scopedSkills, label: `${nmEntry.name}/${se.name}` })
-          }
-        }
+    const pkgDir = path.join(packagesDir, entry.name)
+    // Recursively search each package for skills (handles git URL nesting)
+    const found = findSkillsDirsInDir(pkgDir, 6)
+    for (const f of found) {
+      if (!results.some(r => r.dir === f.dir)) {
+        results.push(f)
       }
     }
   }
@@ -111,15 +135,9 @@ function getSkillSearchPaths(projectDir?: string): { dir: string; label: string 
     { dir: path.join(home, ".config", "opencode", "skills"), label: "global" },
   ]
 
-  // All plugin packages in cache
+  // All plugin packages in cache (handles git-based nesting)
   for (const p of findAllPluginSkills()) {
     paths.push(p)
-  }
-
-  // Superpowers (redundant with findAllPluginSkills, but as fallback)
-  const spDir = findSuperpowersSkillsDir()
-  if (spDir && !paths.some(p => p.dir === spDir)) {
-    paths.push({ dir: spDir, label: "superpowers" })
   }
 
   // Project-level skills
