@@ -1,0 +1,49 @@
+{
+  "name": "opencode-trigger-panel",
+  "version": "0.1.0",
+  "description": "OpenCode TUI sidebar plugin for visual keyword-trigger skill configuration",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./tui": {
+      "import": "./src/index.tsx",
+      "config": { "enabled": true }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "skill",
+    "install.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "opencode", "opencode-plugin", "tui",
+    "skill", "keyword-trigger", "sidebar"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.14.0",
+    "@opencode-ai/sdk": ">=1.14.0",
+    "@opentui/core": ">=0.2.0",
+    "@opentui/solid": ">=0.2.0",
+    "solid-js": ">=1.9.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.17.0",
+    "@opencode-ai/sdk": "^1.17.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.8.0"
+  }
+}

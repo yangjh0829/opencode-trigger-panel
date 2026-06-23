@@ -1,0 +1,7 @@
+{
+  "triggers": [
+    { "keywords": ["review", "审核"], "skills": ["brainstorming", "grill-me"] },
+    { "keywords": ["debug", "调试"], "skills": ["chrome-devtools", "systematic-debugging"] },
+    { "keywords": ["TDD", "测试驱动"], "skills": ["test-driven-development"] }
+  ]
+}
