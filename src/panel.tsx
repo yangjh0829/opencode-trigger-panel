@@ -34,7 +34,7 @@ export function TriggerPanel(props: PanelProps): JSX.Element {
     "\u2500".repeat(Math.max(1, panelWidth() - 6)),
   )
 
-  // ── detect loaded skills via session messages ──
+  // 鈹€鈹€ detect loaded skills via session messages 鈹€鈹€
   createEffect(() => {
     void tick()
     try {
@@ -88,7 +88,7 @@ export function TriggerPanel(props: PanelProps): JSX.Element {
     }
   })
 
-  // ── listen for message updates to refresh ──
+  // 鈹€鈹€ listen for message updates to refresh 鈹€鈹€
   onMount(() => {
     const unsub1 = props.api.event.on("message.updated", () =>
       setTick(v => v + 1),
@@ -159,42 +159,48 @@ export function TriggerPanel(props: PanelProps): JSX.Element {
           ))}
         </Show>
 
-        {/* ── Loaded Skills section ── */}
-        <Show when={loadedSkills().length > 0}>
-          <text
-            onMouseUp={() => setSkillsOpen(!skillsOpen())}
-          >
-            <span style={{ fg: pal().muted }}>
-              {skillsOpen() ? "\u25bc " : "\u25b6 "}
-            </span>
-            <span style={{ fg: pal().primary }}>
-              <b>{"\u{1F4E6}"} {"\u5DF2\u52A0\u8F7D"} Skill</b>
-            </span>
-            <span style={{ fg: pal().muted }}>
-              {" (" + loadedSkills().length + ")"}
-            </span>
-          </text>
+        {/* 鈹€鈹€ Loaded Skills section (always visible) 鈹€鈹€ */}
+        <text
+          onMouseUp={() => setSkillsOpen(!skillsOpen())}
+        >
+          <span style={{ fg: pal().muted }}>
+            {skillsOpen() ? "\u25bc " : "\u25b6 "}
+          </span>
+          <span style={{ fg: pal().primary }}>
+            <b>{"\u{1F4E6}"} {"\u5DF2\u52A0\u8F7D"} Skill</b>
+          </span>
+          <span style={{ fg: pal().muted }}>
+            {" (" + loadedSkills().length + ")"}
+          </span>
+        </text>
 
-          <Show when={skillsOpen()}>
-            {loadedSkills().map((sk: LoadedSkill) => {
-              const maxName = Math.max(4, panelWidth() - 14)
-              return (
-                <text>
-                  <span style={{ fg: pal().accent }}>
-                    {"  " + truncateVisual(sk.name, maxName)}
-                  </span>
-                  <Show when={sk.tokens > 0}>
-                    <span style={{ fg: pal().muted }}>
-                      {" \u00b7 " + (sk.tokens >= 1000
-                        ? (sk.tokens / 1000).toFixed(1) + "K"
-                        : sk.tokens) + " tok"}
+        <Show when={skillsOpen()}>
+          <Show when={loadedSkills().length === 0} fallback={
+            <>
+              {loadedSkills().map((sk: LoadedSkill) => {
+                const maxName = Math.max(4, panelWidth() - 14)
+                return (
+                  <text>
+                    <span style={{ fg: pal().accent }}>
+                      {"  " + truncateVisual(sk.name, maxName)}
                     </span>
-                  </Show>
-                </text>
-              )
-            })}
-            <text fg={pal().muted}>{sep()}</text>
+                    <Show when={sk.tokens > 0}>
+                      <span style={{ fg: pal().muted }}>
+                        {" \u00b7 " + (sk.tokens >= 1000
+                          ? (sk.tokens / 1000).toFixed(1) + "K"
+                          : sk.tokens) + " tok"}
+                      </span>
+                    </Show>
+                  </text>
+                )
+              })}
+            </>
+          }>
+            <text>
+              <span style={{ fg: pal().muted }}>{"  \u672a\u8c03\u7528 skill"}</span>
+            </text>
           </Show>
+          <text fg={pal().muted}>{sep()}</text>
         </Show>
 
         <text>
