@@ -29,11 +29,12 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
 
   const projectDir = api.state.path.directory
 
-  // 鈹€鈹€ Auto keyword match 鈫?toast on every user message 鈹€鈹€
+  // 鈹€鈹€ Auto keyword match 鈫?toast on user message (debounced 300ms) 鈹€鈹€
   let currentSessionId = ""
   let lastProcessedMsgId = ""
+  let toastTimer: ReturnType<typeof setTimeout> | undefined
 
-  api.event.on("message.updated", () => {
+  const checkAutoMatch = () => {
     try {
       if (!currentSessionId) return
       const msgs = api.state.session.messages(currentSessionId)
@@ -71,6 +72,11 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
     } catch {
       // session state not ready
     }
+  }
+
+  api.event.on("message.updated", () => {
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(checkAutoMatch, 300)
   })
 
   api.slots.register({
