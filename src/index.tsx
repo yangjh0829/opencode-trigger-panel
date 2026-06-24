@@ -29,6 +29,50 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
 
   const projectDir = api.state.path.directory
 
+  // 鈹€鈹€ Auto keyword match 鈫?toast on every user message 鈹€鈹€
+  let currentSessionId = ""
+  let lastProcessedMsgId = ""
+
+  api.event.on("message.updated", () => {
+    try {
+      if (!currentSessionId) return
+      const msgs = api.state.session.messages(currentSessionId)
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const msg = msgs[i]
+        if (msg.role !== "user") continue
+        if (msg.id === lastProcessedMsgId) break
+
+        const parts = api.state.part(msg.id) as readonly any[]
+        let text = ""
+        for (const p of parts) {
+          if (p.type === "text" && !p.synthetic && !p.ignored)
+            text += p.text || ""
+        }
+
+        if (text.trim()) {
+          const matches = matchTriggers(text)
+          if (matches.length > 0) {
+            const allSkills = [...new Set(matches.flatMap(r => r.skills))]
+            const matchedKw = matches
+              .flatMap(r => r.keywords.filter(k =>
+                text.toLowerCase().includes(k.toLowerCase()),
+              ))
+            api.ui.toast({
+              title: `\u{1F3AF} \u5339\u914D \u2192 ${allSkills.join(", ")}`,
+              message: `[${matchedKw.join(", ")}]`,
+              duration: 5000,
+            })
+          }
+        }
+
+        lastProcessedMsgId = msg.id
+        break
+      }
+    } catch {
+      // session state not ready
+    }
+  })
+
   api.slots.register({
     order: 60,
     slots: {
@@ -36,6 +80,7 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
         ctx: TuiSlotContext,
         input: { session_id: string },
       ): JSX.Element {
+        currentSessionId = input.session_id
         return (
           <TriggerPanel
             theme={ctx.theme.current as Record<string, unknown>}
