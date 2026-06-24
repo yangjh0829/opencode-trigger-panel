@@ -2,7 +2,7 @@
 
 import type { JSX } from "@opentui/solid"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
-import { createSignal, createMemo, Show, createEffect, onMount, onCleanup } from "solid-js"
+import { createSignal, createMemo, Show, onMount, onCleanup } from "solid-js"
 import type { TriggerRule } from "./triggers"
 import { getPalette, truncateVisual } from "./theme"
 import { getStrings, getLang, type Strings } from "./i18n"
@@ -21,11 +21,25 @@ interface PanelProps {
   sessionId: string
 }
 
+// 鈹€鈹€ Extract skill name from a tool part 鈹€鈹€
+function extractSkillName(tp: any): string | null {
+  let name: string | undefined = tp.state?.metadata?.name ?? tp.metadata?.name
+  if (typeof name !== "string") {
+    const output = typeof tp.state?.output === "string" ? tp.state.output : ""
+    const m = output.match(/^#{1,2}\s*Skill:\s*(.+)/m)
+    if (m) name = m[1].trim()
+  }
+  if (typeof name !== "string") {
+    const title = typeof tp.state?.title === "string" ? tp.state.title : ""
+    if (title) name = title.replace(/^skill:\s*/i, "").trim()
+  }
+  return typeof name === "string" && name ? name : null
+}
+
 export function TriggerPanel(props: PanelProps): JSX.Element {
   const [panelWidth, setPanelWidth] = createSignal(28)
   const [skillsOpen, setSkillsOpen] = createSignal(true)
   const [loadedSkills, setLoadedSkills] = createSignal<LoadedSkill[]>([])
-  const [tick, setTick] = createSignal(0)
   const t: Strings = getStrings(getLang())
   let boxEl: any
 
@@ -34,69 +48,66 @@ export function TriggerPanel(props: PanelProps): JSX.Element {
     "\u2500".repeat(Math.max(1, panelWidth() - 6)),
   )
 
-  // 鈹€鈹€ detect loaded skills via session messages 鈹€鈹€
-  createEffect(() => {
-    void tick()
+  // 鈹€鈹€ Incremental loaded-skills scan 鈹€鈹€
+  const scannedIds = new Set<string>()
+  const foundSkills = new Map<string, LoadedSkill>()
+
+  function scanNewMessages() {
+    // Skip when panel collapsed
+    if (!props.open()) return
+
     try {
       const sid = props.sessionId
       const msgs = props.api.state.session.messages(sid)
-      const found = new Map<string, LoadedSkill>()
+      let changed = false
 
       for (const msg of msgs) {
+        if (scannedIds.has(msg.id)) continue
+        scannedIds.add(msg.id)
+
         if (msg.role !== "assistant") continue
         let parts: readonly any[] = []
         try { parts = props.api.state.part(msg.id) } catch { continue }
+
         for (const p of parts) {
           if (p.type !== "tool") continue
           const tp = p as any
           if (tp.tool !== "skill") continue
           if (tp.state?.status !== "completed") continue
 
-          let name: string | undefined =
-            tp.state?.metadata?.name ??
-            tp.metadata?.name
+          const name = extractSkillName(tp)
+          if (!name) continue
 
-          if (typeof name !== "string") {
-            const output = typeof tp.state?.output === "string"
-              ? tp.state.output : ""
-            const m = output.match(/^#{1,2}\s*Skill:\s*(.+)/m)
-            if (m) name = m[1].trim()
-          }
-
-          if (typeof name !== "string") {
-            const title = typeof tp.state?.title === "string"
-              ? tp.state.title : ""
-            if (title) name = title.replace(/^skill:\s*/i, "").trim()
-          }
-
-          if (typeof name === "string" && name) {
-            const output = typeof tp.state?.output === "string"
-              ? tp.state.output : ""
-            const tokens = output
-              ? Math.ceil(output.length / 3.5) : 0
-            const existing = found.get(name)
-            if (!existing || existing.tokens < tokens) {
-              found.set(name, { name, tokens })
-            }
+          const output = typeof tp.state?.output === "string" ? tp.state.output : ""
+          const tokens = output ? Math.ceil(output.length / 3.5) : 0
+          const existing = foundSkills.get(name)
+          if (!existing || existing.tokens < tokens) {
+            foundSkills.set(name, { name, tokens })
+            changed = true
           }
         }
       }
 
-      setLoadedSkills([...found.values()])
+      if (changed) {
+        setLoadedSkills([...foundSkills.values()])
+      }
     } catch {
       // session state not ready
     }
-  })
+  }
 
-  // 鈹€鈹€ listen for message updates to refresh 鈹€鈹€
+  // 鈹€鈹€ Debounced event listener (200ms) 鈹€鈹€
   onMount(() => {
-    const unsub1 = props.api.event.on("message.updated", () =>
-      setTick(v => v + 1),
-    )
-    const unsub2 = props.api.event.on("message.part.updated", () =>
-      setTick(v => v + 1),
-    )
-    onCleanup(() => { unsub1(); unsub2() })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const debouncedScan = () => {
+      clearTimeout(timer)
+      timer = setTimeout(scanNewMessages, 200)
+    }
+    // Only listen to message.updated (not message.part.updated)
+    const unsub = props.api.event.on("message.updated", debouncedScan)
+    // Initial scan
+    setTimeout(scanNewMessages, 300)
+    onCleanup(() => { clearTimeout(timer); unsub() })
   })
 
   return (
