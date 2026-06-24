@@ -48,8 +48,8 @@ export function TriggerPanel(props: PanelProps): JSX.Element {
     "\u2500".repeat(Math.max(1, panelWidth() - 6)),
   )
 
-  // 鈹€鈹€ Incremental loaded-skills scan 鈹€鈹€
-  const scannedIds = new Set<string>()
+  // 鈹€鈹€ Incremental loaded-skills scan (by part count, not message ID) 鈹€鈹€
+  const scannedParts = new Map<string, number>()
   const foundSkills = new Map<string, LoadedSkill>()
 
   function scanNewMessages() {
@@ -62,14 +62,17 @@ export function TriggerPanel(props: PanelProps): JSX.Element {
       let changed = false
 
       for (const msg of msgs) {
-        if (scannedIds.has(msg.id)) continue
-        scannedIds.add(msg.id)
-
         if (msg.role !== "assistant") continue
+
         let parts: readonly any[] = []
         try { parts = props.api.state.part(msg.id) } catch { continue }
 
-        for (const p of parts) {
+        const lastCount = scannedParts.get(msg.id) ?? 0
+        if (parts.length <= lastCount) continue  // No new parts since last scan
+
+        // Only scan new parts (from lastCount onwards)
+        for (let i = lastCount; i < parts.length; i++) {
+          const p = parts[i]
           if (p.type !== "tool") continue
           const tp = p as any
           if (tp.tool !== "skill") continue
@@ -86,6 +89,8 @@ export function TriggerPanel(props: PanelProps): JSX.Element {
             changed = true
           }
         }
+
+        scannedParts.set(msg.id, parts.length)
       }
 
       if (changed) {
